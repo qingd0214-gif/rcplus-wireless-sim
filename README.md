@@ -6,6 +6,27 @@
 
 > 实测：无线打杆链路 RTT **2ms**，连续飞行数小时零掉线。本文末尾有延迟攻坚的完整数据。
 
+## 为什么又一个（Why another）
+
+GitHub 上已经有几个 RC Plus 接 PC 的项目
+（[leo02002/DJI-RC-Plus-RM700-PC-Controller](https://github.com/leo02002/DJI-RC-Plus-RM700-PC-Controller)、
+[Liancycling/DJIRCPlus-Bridge](https://github.com/Liancycling/DJIRCPlus-Bridge_RCPlus-)、
+RC Plus 2 侧还有 [IamEmery 的协议逆向](https://github.com/IamEmery/DJI-RC-Plus-2-TKPL2-Native-Gamepad-Bridge-for-Gaming)），
+思路都是 USB 有线。本项目不是重复造轮子，差异化在四点：
+
+1. **无线，不插线** —— 全网唯一的 WiFi adb 方案，插线优先但拔线照飞。
+2. **WiFi 省电休眠的发现与压制** —— 无线上最大的坑是 Android 省电（PS-Poll）让射频
+   只在 beacon 窗口醒来：实测 ping 平均 75ms、事件流断档最长 **1.52 秒**（手感就是
+   "打杆不及时、摇杆老是卡一下"）。没有 root 关不掉省电，但**每秒 30 个空 UDP 包**
+   就能把链路压到 **2ms**（0.7KB/s 代价）。这组实测数据全网独一份，
+   方法见 [references/latency-wifi.md](references/latency-wifi.md)。
+3. **遥控器屏幕实时仪表** —— 双杆圆点、四通道条、拨轮、C1~C6、五向键、LB/Back/RB
+   键灯，全部实时显示；点遥控器桌面上的 Uncrashed 图标 = 打开仪表 + 自动拉起模拟器。
+   没有第二家做了这个。
+4. **按"天天在用"做的工程化** —— 常驻自愈（掉线自动重连、事件流"半死"心跳看门狗）、
+   R3 关游戏的退出码协议（关了不再自动弹出）、息屏自动唤醒、防安卓模拟器抢占
+   adb 端口、电池保护。不是"能跑的脚本"，是陪伴每次飞行的系统。
+
 ```
 RC Plus (Android evdev) ──adb(WiFi/USB)──> rcplus_sim.py ──ViGEm──> 虚拟 X360 手柄 ──> 模拟器
                                                │
