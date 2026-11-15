@@ -266,6 +266,10 @@ class BatteryGuard(threading.Thread):
 
     def run(self):
         while not self.stop.wait(120):
+            # 待命/飞行时不碰遥控器：dumpsys 是一条 adb shell 命令，
+            # 会短暂挤停数据通道。飞行 = 遥控器独占（2026-11-16）。
+            if not game_pids():
+                continue
             lv = self._level()
             if lv is None:
                 continue
