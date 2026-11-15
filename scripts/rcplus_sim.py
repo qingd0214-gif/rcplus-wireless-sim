@@ -576,6 +576,10 @@ class RcReader(threading.Thread):
         try:
             subprocess.run([self.adb, "connect", self.serial],
                            capture_output=True, timeout=15, creationflags=_NOWIN)
+            # 重连 = 遥控器很可能刚重启过 → 勿扰被固件重置了，补写回去
+            subprocess.run([self.adb, "-s", self.serial, "shell",
+                            "settings put global zen_mode 1"],
+                           capture_output=True, timeout=10, creationflags=_NOWIN)
         except Exception:
             pass
 
@@ -815,6 +819,23 @@ def main():
         subprocess.run([adb, "connect", f"{a.wifi}:5555"], check=False,
                        creationflags=_NOWIN)
 
+    def _mute_remote(adb, serial):
+        """遥控器勿扰常开（2026-11-16）。
+
+        背景：油门弹簧已拆，开机时摇杆经常不在中位 → 遥控器自检警报
+        响个不停；勿扰（Android zen_mode=1）能关掉它，但大疆固件重启
+        后会重置。这里在连接/重连时自动写回 zen_mode=1。
+        手动恢复声音：遥控器快捷面板里关掉勿扰即可（下次重连会被写回）。
+        """
+        try:
+            subprocess.run([adb, "-s", serial, "shell",
+                            "settings put global zen_mode 1"],
+                           capture_output=True, timeout=10,
+                           creationflags=_NOWIN)
+            print("★ 遥控器勿扰模式已自动开启（关开机摇杆警报）")
+        except Exception:
+            pass
+
     serial = None
     if not a.demo:
         serial = adb_preflight(adb, wifi=bool(a.wifi))
@@ -823,6 +844,7 @@ def main():
             return 2
         conn = "无线WiFi" if ":" in serial else "USB"
         print(f"遥控器已连接({conn} · {serial}) · 读 {a.device}")
+        _mute_remote(adb, serial)
 
     # 1) 先建手柄，再启动游戏 —— UE 类游戏在启动时才枚举输入设备
     pad = vg.VX360Gamepad()
