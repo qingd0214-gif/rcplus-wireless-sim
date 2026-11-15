@@ -67,6 +67,20 @@ RC Plus (Android evdev) ──adb(WiFi/USB)──> rcplus_sim.py ──ViGEm─�
 - [adb platform-tools](https://developer.android.com/tools/releases/platform-tools)，
   默认路径 `C:\tools\platform-tools\adb.exe`（可配置）
 
+> ⚠️ **给 `vgamepad` 用一个独立 venv，别装进受管运行时。**
+> 有些环境（比如 IDE/助手自带的嵌入式 python）会在重启时把 `site-packages`
+> 重置成只剩 `pip`，`vgamepad` 跟着消失 —— 症状是"重启后游戏里突然没手柄"，
+> 而 `rcplus_sim.py` 只打一行 `缺 vgamepad` 就退出，很难联想过去。
+>
+> ```sh
+> py -3.14 -m venv C:\rcplus-env
+> C:\rcplus-env\Scripts\python.exe -m pip install vgamepad
+> ```
+>
+> 或者直接双击 `assets/setup_env.bat`（一键建环境 + 装包）。启动 bat 会先探测，
+> 缺了自动重建；`launcher.py` 也会自动挑一个**能 import vgamepad** 的解释器。
+> 细节见 [`references/troubleshooting.md`](references/troubleshooting.md) 第 4 条。
+
 ### 2. 开启遥控器无线调试
 
 插 USB 数据线，执行一次（IP 换成遥控器连 WiFi 后的地址，可在遥控器设置里看）：

@@ -23,6 +23,12 @@ RC Plus (Android evdev) --adb(WiFi/USB)--> rcplus_sim.py --ViGEm--> 虚拟 X360 
 - adb platform-tools（默认找 `C:\tools\platform-tools\adb.exe`）
 - FPV 模拟器（如 Uncrashed）
 
+> **`vgamepad` 必须装在独立 venv 里**（`assets/setup_env.bat` 一键搞定）。
+> 受管运行时（IDE/助手自带的嵌入式 python）会在重启时重置 `site-packages`，
+> 把 vgamepad 一起抹掉 —— 症状是"重启后游戏里没手柄"，
+> 而 `rcplus_sim.py` 只会打一行 `缺 vgamepad` 就退出。
+> 详见 [references/troubleshooting.md](references/troubleshooting.md) 第 4 条。
+
 ## 安装与配置
 
 1. 遥控器开启无线调试：插 USB 数据线跑一次 `adb tcpip 5555`，之后拔线走 WiFi。

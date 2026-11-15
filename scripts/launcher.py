@@ -25,8 +25,31 @@ HERE = Path(__file__).resolve().parent
 HERE_STR = str(HERE)
 
 # 关键：不能用裸的 python。系统 PATH 里第一个 python 是别的虚拟环境，没有 vgamepad。
-# 用正斜杠写、运行时 normpath 归一化，避免转义问题。
-PYEXE = os.path.normpath("C:/Users/Administrator/.workbuddy/binaries/python/versions/3.13.12/python.exe")
+# 2026-11-15 事故：WorkBuddy 的托管 python 在重启时被重置成干净环境，
+# site-packages 只剩 pip，vgamepad 被抹掉 —— 表现就是"重启后游戏里没手柄"。
+# 所以不再写死路径，改成"挨个试，谁能 import vgamepad 就用谁"。
+def _pick_python():
+    cands = [
+        os.environ.get("RCPLUS_PYTHON"),        # 手动指定优先
+        sys.executable,                          # 谁启动的 launcher 就用谁
+        r"C:\rcplus-env\Scripts\python.exe",     # 独立环境（setup_env.bat 建的）
+        r"C:\Users\Administrator\.workbuddy\binaries\python\versions\3.13.12\python.exe",
+    ]
+    for c in cands:
+        if not c or not os.path.exists(c):
+            continue
+        try:
+            r = subprocess.run([c, "-c", "import vgamepad"],
+                               capture_output=True, timeout=25)
+            if r.returncode == 0:
+                return os.path.normpath(c)
+        except Exception:
+            continue
+    # 一个都不行，还是返回独立环境那个，让子进程报出原本的错误信息
+    return os.path.normpath(r"C:\rcplus-env\Scripts\python.exe")
+
+
+PYEXE = _pick_python()
 ADB = os.path.normpath("C:/tools/platform-tools/adb.exe")
 GAME = "D:/穿越机模拟器/Uncrashed免安装/Uncrashed.FPV/Uncrashed.exe"
 

@@ -31,8 +31,38 @@
 
 ## 4. 游戏里看不到手柄 / 摇杆不动
 
+**先看这一条：`vgamepad` 包还在不在。**
+
+```sh
+python -c "import vgamepad"      # 报 ModuleNotFoundError 就是它
+```
+
+`vgamepad` 没了的话，`rcplus_sim.py` 会在启动时**立刻退出**（只打一行
+`缺 vgamepad`），虚拟手柄根本不会被创建，游戏里就是"没手柄"。
+
+**典型触发场景（2026-11-15 实际踩过）**：把脚本挂在受管运行时（比如
+WorkBuddy 自带的 `~/.workbuddy/binaries/python/...`）上，那个 python 会在
+重启时被重置成干净环境，`site-packages` 只剩 `pip` —— `vgamepad` 连同其它
+包一起消失。症状就是"昨天还能飞，重启后游戏没法玩"。
+
+**修法**：用独立 venv，别依赖受管运行时。
+
+```sh
+py -3.14 -m venv C:\rcplus-env
+C:\rcplus-env\Scripts\python.exe -m pip install vgamepad
+```
+
+仓库里的 `assets/setup_env.bat` 就是干这个的，一键重建；启动 bat 会先
+`if not exist C:\rcplus-env\Scripts\python.exe` + `import vgamepad` 双重探测，
+缺了就自动调它。`launcher.py` 的 `_pick_python()` 也是挨个试
+`RCPLUS_PYTHON` → `sys.executable` → venv → 旧路径，**谁能 import vgamepad 就用谁**。
+
+其余可能：
+
 - **ViGEmBus 驱动没装**：`python -c "import vgamepad"` 不报错但 joy.cpl 里没设备 →
-  去 https://vigem.org 装驱动。
+  去 https://vigem.org 装驱动（`Get-Service ViGEmBus` 应为 `Running`）。
+- **设备管理器里一堆 `Unknown` 状态的 XBOX 360 手柄**：历史幽灵条目，
+  不影响新设备创建；实在别扭就在设备管理器里"显示隐藏的设备"后删掉。
 - 游戏在桥接启动**之前**就开了：UE 游戏启动时才枚举设备，必须重启游戏
   （launcher 检测到游戏已运行会自动处理）。
 - 绑定错误：SDL 轴 2/4 是扳机（恒 -1），别绑；Deadzone 设 0；
