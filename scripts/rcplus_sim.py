@@ -697,16 +697,23 @@ _MUTEX_HANDLE = None
 
 
 def single_instance_ok():
-    """用 Windows 命名互斥体防止同时跑多份（多份会各自建一个虚拟手柄互相抢）。"""
+    """用 Windows 命名互斥体防止同时跑多份（多份会各自建一个虚拟手柄互相抢，
+    两个 getevent 还会互相饿死 —— 五向键那种短脉冲最先丢）。
+
+    2026-11-15 发现这把锁一直是坏的：`ctypes.windll.kernel32.GetLastError()`
+    拿到的不是真实的 Win32 错误码（ctypes 只有在 use_last_error=True 时才会
+    保存它），检查永远不触发，双开畅通无阻。必须用 WinDLL(use_last_error=True)
+    + ctypes.get_last_error()。
+    """
     global _MUTEX_HANDLE
     try:
         import ctypes
-        _MUTEX_HANDLE = ctypes.windll.kernel32.CreateMutexW(
-            None, False, "Global\\RCPlusSimBridgeMutex")
-        ERROR_ALREADY_EXISTS = 183
-        if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        _MUTEX_HANDLE = k32.CreateMutexW(
+            None, True, "Global\\RCPlusSimBridgeMutex")
+        if not _MUTEX_HANDLE:
             return False
-        return True
+        return ctypes.get_last_error() != 183   # ERROR_ALREADY_EXISTS
     except Exception:
         return True          # 拿不到互斥体就不拦，别因小失大
 

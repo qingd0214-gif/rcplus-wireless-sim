@@ -154,6 +154,18 @@ def check():
 
 
 def main():
+    # launcher 也加单实例锁：launcher 本身没锁，双击两次会拉起两个 launcher，
+    # 各自 spawn 一份 rcplus_sim（rcplus_sim 自己的互斥体之前也是坏的）。
+    import ctypes
+    _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _h = _k32.CreateMutexW(None, True, "Global\\RCPlusSimLauncherMutex")
+    if _h and ctypes.get_last_error() == 183:   # ERROR_ALREADY_EXISTS
+        print("[!] 已经有一个启动器在运行了（可能双击了两次）。")
+        print("    多开会拉起两个手柄实例互相抢事件流，五向键/按键会丢。")
+        print("    用正在跑的那个就行；确实要重启请先关掉旧的窗口。")
+        time.sleep(4)
+        return 0
+
     # 双击启动（bat 传了 --auto）：跳过菜单直接开飞，全程不用按键
     auto = "--auto" in sys.argv[1:]
     keep_screen = False
