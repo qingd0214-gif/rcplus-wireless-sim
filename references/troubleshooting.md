@@ -29,6 +29,20 @@
   再 `ping` 验证。详见 [latency-wifi.md](latency-wifi.md)。
 - 有线 → 查 USB 供电/ hubs；看状态栏 `[重连N]` 计数是否猛涨（流在反复断）。
 
+## 3.5 飞行时打杆不丝滑 / 极限转角不及时（2026-11-16）
+
+**先确认模拟器是不是在跑。** 加了滚轮/FSN 功能后，模拟器会常驻一个
+DUML 客户端（仪表线程）。飞行链路自己也走 DUML，两者抢遥控器的
+处理能力 → 实测打杆变肉。
+
+- 已修复：`rcplus_sim` 的 DUML 客户端现在跟随游戏生命周期
+  （游戏在=连，游戏退/待命=断），飞行时遥控器独占 DUML。
+- 但 **`stick_screen.py`（手动仪表）仍是常驻连接** —— 要飞飞机先关它。
+- 诊断工具：`scripts/probe_latency2.py`（内核时间戳攒包检测）、
+  `scripts/probe_latency5.py`（仪表线程开/关 A/B 对决）、
+  `scripts/test_wheel_gate.py`（start/stop 往返验证）。
+- 详见 [duml-wheel.md](duml-wheel.md) 的"DUML 客户端生命周期"一节。
+
 ## 4. 游戏里看不到手柄 / 摇杆不动
 
 **先看这一条：`vgamepad` 包还在不在。**

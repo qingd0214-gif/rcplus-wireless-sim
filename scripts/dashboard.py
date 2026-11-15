@@ -227,6 +227,7 @@ es.onmessage = (e) => {
 # 但内核没给它开 evdev 轴（event6 连 EV_REL 都没声明），
 # 它只活在 DJI 私有的 DUML 协议里：0x06/0xAE 状态包的第 4 个字节。
 _wheel = None
+_wheel_thread = None
 
 
 class WheelFeed:
@@ -323,10 +324,44 @@ def start_wheel(adb, serial=None, verbose=False):
             run("connect", serial)                    # 顺手重连
             run("-s", serial, "forward", "tcp:40007", "tcp:40007")
 
-    mod.DumlWheel(on_tick=feed.on_tick, on_mode=feed.on_mode,
-                  ensure=ensure, verbose=verbose).start()
+    th = mod.DumlWheel(on_tick=feed.on_tick, on_mode=feed.on_mode,
+                       ensure=ensure, verbose=verbose)
+    th.start()
+    global _wheel_thread
+    _wheel_thread = th
     _wheel = feed
     return feed
+
+
+def stop_wheel():
+    """断开 DUML 客户端（关线程 + 关 socket）。
+
+    为什么要断：飞行时遥控器的飞行链路也在走 DUML，我们的常驻
+    客户端会和它抢遥控器的处理能力 —— 实测"极限转角不及时、打杆
+    不丝滑"（2026-11-16）。所以仪表线程跟随游戏生命周期：
+    游戏进行中才连，游戏退出/待命时断开，把遥控器完整让给飞行。
+    """
+    global _wheel, _wheel_thread
+    th, _wheel_thread = _wheel_thread, None
+    _wheel = None
+    if th is None:
+        return
+    try:
+        th.stop()
+        th.join(timeout=2)
+    except Exception:
+        pass
+    sock = getattr(th, "_sock", None)
+    if sock is not None:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+def wheel_running():
+    """仪表 DUML 线程是否还活着（stop_wheel 后为 False）。"""
+    return _wheel_thread is not None and _wheel_thread.is_alive()
 
 
 def wheel_snapshot():

@@ -857,15 +857,21 @@ def main():
         try:
             subprocess.Popen([a.game], cwd=str(Path(a.game).parent))
             print("\n>>> [遥控器] 已启动模拟器   ", flush=True)
+            if dashboard is not None and not a.no_wheel and serial:
+                dashboard.start_wheel(a.adb, serial)   # 游戏在跑才连 DUML
             return False
         except Exception as e:
             print(f"\n[!] 遥控器启动模拟器失败: {e}   ", flush=True)
             return False
 
+    dashboard = None
     try:
         import dashboard
-        if not a.no_wheel:
-            # 第三拨轮：只读，只上仪表 —— 不写手柄轴、不写任何键（2026-11-15）
+        # 第三拨轮线程【跟随游戏生命周期】：待命/飞行时不连 DUML ——
+        # 飞行时遥控器的飞行链路也在走 DUML，常驻客户端会和它抢
+        # 处理能力，实测"极限转角不及时"（2026-11-16）。
+        # 游戏已在跑才立即连；否则等主循环的随动逻辑在游戏启动后连接。
+        if not a.no_wheel and serial and game_pids():
             dashboard.start_wheel(a.adb, serial)
         dashboard.start_server(_dash_snapshot, commands={"launch": _dash_launch})
         print(f"★ 摇杆仪表屏已就绪: http://{dashboard.local_ip()}:8123"
@@ -1080,6 +1086,8 @@ def main():
         try:
             subprocess.Popen([a.game], cwd=str(Path(a.game).parent))
             print(f"★ 已启动 {Path(a.game).name}")
+            if dashboard is not None and not a.no_wheel and serial:
+                dashboard.start_wheel(a.adb, serial)       # 游戏在跑才连 DUML
             print("\n  下一步（在游戏里）：")
             print("   1) 进 Controls，设备下拉里应出现 XInput Controller #1 —— 选中它")
             print("   2) Stick Calibration，按提示把摇杆推到行程端点、再回中")
@@ -1097,6 +1105,7 @@ def main():
     t0 = time.time()
     prev_t = t0
     last_print = 0.0
+    wheel_gate_t = 0.0        # 仪表 DUML 随动节拍（2 秒一查，别每帧查进程表）
     period = 1.0 / RATE_HZ
 
     try:
@@ -1105,6 +1114,19 @@ def main():
             dt = min(0.1, now - prev_t)
             prev_t = now
             raw = st.raw
+
+            # 仪表 DUML 客户端随动游戏生命周期：游戏在=连，游戏退=断。
+            # 待命/飞行时不连，把遥控器的 DUML 处理能力完整让给飞行链路。
+            if now - wheel_gate_t >= 2.0:
+                wheel_gate_t = now
+                if dashboard is not None and serial and not a.no_wheel:
+                    if game_pids():
+                        if not dashboard.wheel_running():
+                            dashboard.start_wheel(a.adb, serial)
+                    elif dashboard.wheel_running():
+                        dashboard.stop_wheel()
+                        print("[i] 游戏已退出 → 断开仪表 DUML 连接"
+                              "（飞行时遥控器独占 DUML，打杆更丝滑）")
 
             # 切模式时请求的手柄清零，统一在主线程做（跨线程调 ViGEm 不安全）
             if box["reset_req"]:
@@ -1121,6 +1143,8 @@ def main():
             if box["quit"]:
                 print("\n>>> R3：关闭游戏…")
                 kill_game()
+                if dashboard is not None:
+                    dashboard.stop_wheel()   # 进程随之退出，这里兜底断干净
                 # 遥控器屏幕上的仪表页也一并关掉，屏幕回到遥控器桌面。
                 # （之后想再玩：点遥控器图标 → 仪表打开 → 自动拉起模拟器）
                 if serial and not a.demo:
@@ -1370,6 +1394,8 @@ def main():
     except KeyboardInterrupt:
         print("\n\n收到 Ctrl+C，正在释放虚拟手柄…")
     finally:
+        if dashboard is not None:
+            dashboard.stop_wheel()     # 任何退出路径都断开 DUML 客户端
         for r in readers:
             r.stop.set()
             r.kill_proc()     # 杀 getevent 子进程：不杀的话终端窗口关不掉（见 kill_proc）
