@@ -41,6 +41,8 @@ RC Plus (Android evdev) ──adb(WiFi/USB)──> rcplus_sim.py ──ViGEm─�
   点遥控器上的 Uncrashed 图标 → 仪表打开 + 模拟器自动启动
 - **遥控器屏幕仪表**：双杆圆点、油门/偏航/横滚/俯仰通道条、双拨轮、C1~C6、
   五向键十字、LB/Back/RB 键灯，全部实时
+- **第三个拨轮**（彩蛋）：右拨轮下方那个不回中的轮子，evdev 里没有、
+  只在 DUML 私有协议里，本项目把它读出来了 —— 详见下文
 - **全输入映射**：双摇杆、双拨轮（右拨轮=游戏音量）、C1~C6、五向键（菜单模式可当
   鼠标选地图）、肩键、Back、R3 长按关游戏
 - **油门两种手感**：绝对值（杆在哪油门在哪，适合不回中改装杆）/ 锁存（穿越机手感），Back 一键切换
@@ -144,6 +146,31 @@ python launcher.py --auto        # 有线优先，没线自动转无线
 
 完整测量方法与踩坑记录：[`references/latency-wifi.md`](references/latency-wifi.md)
 
+## 彩蛋：右拨轮下面那个「不回中的轮子」
+
+遥控器上其实有**三个**轮子。前两个在 evdev 里（`ABS_Z` / `ABS_RZ`，自回中）；
+第三个在右拨轮正下方，**不回中**，`getevent` 里**完全看不到** ——
+因为内核根本没给它注册轴。
+
+但它**一直都在正常工作**，只是走的是 DJI 的私有协议 DUML：
+`0x06/0xAE` 状态包的第 4 个字节。
+
+```
+0x00        静止
+0x82 / 0xC2 一档（方向由 bit6 决定）
+0x84 / 0xC4 二档
+0x86 / 0xC6 三档 …最多五档
+```
+
+**不需要接线、不需要拆机。** 用 `adb forward tcp:40007 tcp:40007` 打通隧道就能读，
+静止 9.7 包/秒、拨动时设备会立刻补发（最短 20ms）。
+
+仪表页右上角、"右拨轮"正下方会显示 `滚轮 ◀ ▶`，拨动时对应箭头亮起并显示档位。
+
+> 目前它**只显示、不参与手柄输出** —— Xbox 360 的六个轴已经排满了。
+> 完整协议解析、踩坑记录、以及真要接的话三种映射方案：
+> [`references/duml-wheel.md`](references/duml-wheel.md)
+
 ## 故障排查
 
 见 [`references/troubleshooting.md`](references/troubleshooting.md)。速查：
@@ -164,8 +191,13 @@ rcplus-wireless-sim/
 │   ├── dashboard.py         # 遥控器屏幕仪表 (HTTP :8123)
 │   ├── win_key.py           # SendInput 鼠标/键盘
 │   ├── probe_radio.py       # WiFi 省电对照实验
-│   └── probe_latency.py     # 延迟/事件流测量
-├── references/              # 硬件映射 / 延迟攻坚 / 排障 / APK 构建
+│   ├── probe_latency.py     # 延迟/事件流测量
+│   └── duml/                # 第三个拨轮（DUML 私有协议）
+│       ├── duml_wheel.py    #   读取模块，自动重连 + 心跳
+│       ├── wheel_live.py    #   实时监听（取证）
+│       ├── capture_wheel.py #   录一段再统计字节变化（排查）
+│       └── duml_probe.py    #   协议探针 / 轴解码
+├── references/              # 硬件映射 / DUML 滚轮 / 延迟攻坚 / 排障 / APK 构建
 └── assets/
     ├── RCPlus_Auto.bat      # 开机自启模板
     └── apk_build/           # 遥控器桌面图标 APK 源码

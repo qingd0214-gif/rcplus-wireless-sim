@@ -77,3 +77,7 @@ RC Plus (Android evdev) --adb(WiFi/USB)--> rcplus_sim.py --ViGEm--> 虚拟 X360 
 改按键绑定、加新遥控器、查轴位 → [references/hardware-mapping.md](references/hardware-mapping.md)。
 给遥控器做"Uncrashed"桌面图标 APK → [references/apk-build.md](references/apk-build.md)
 （源码在 `assets/apk_build/`，r8/d8 对匿名类的 NPE 坑和 PE 图标提取的 RVA 坑都在里面）。
+
+**第三个拨轮（右拨轮下方、不回中）不在 evdev 里**，只在 DUML 私有协议里。
+`getevent` 找不到它**不代表没有** —— 读法、协议解析、`adb forward` 的坑
+→ [references/duml-wheel.md](references/duml-wheel.md)（代码在 `scripts/duml/`）。

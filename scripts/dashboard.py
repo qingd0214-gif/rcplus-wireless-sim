@@ -13,6 +13,7 @@ import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 PORT = 8123
 
@@ -62,6 +63,14 @@ PAGE = """<!DOCTYPE html>
   .drow{position:absolute;top:44px;display:flex;align-items:center;gap:6px;width:178px}
   #dialL{left:8px}
   #dialR{right:8px}
+  /* 第三拨轮：右拨轮正下方 —— 与实机位置一一对应。
+     它不回中、不在 evdev 里，只从 DUML 状态包读得到，
+     所以屏幕上只能显示"这时候在往哪个方向转、几档"，没有位置可言。 */
+  #whl{position:absolute;top:78px;right:8px;width:178px;display:flex;
+    align-items:center;gap:6px}
+  .warr{font-size:15px;color:#2b453a}
+  .warr.on{color:#4cd97b;text-shadow:0 0 10px #4cd97b}
+  .wsp{width:34px;font-size:13px;color:#4cd97b;text-align:right}
   .dname{font-size:14px;color:#8fb8a3;white-space:nowrap}
   .dtrack{flex:1;height:12px;background:#131b18;border:1px solid #29433a;border-radius:4px;
     position:relative;overflow:hidden}
@@ -96,6 +105,8 @@ PAGE = """<!DOCTYPE html>
 
   <div id="dialL" class="drow"><span class="dname">左拨轮</span><div class="dtrack"><div class="fill" id="bDL"></div></div><span class="dval" id="vDL"></span></div>
   <div id="dialR" class="drow"><span class="dname">右拨轮</span><div class="dtrack"><div class="fill" id="bDR"></div></div><span class="dval" id="vDR"></span></div>
+
+  <div id="whl"><span class="dname">滚轮</span><span class="warr" id="wL">◀</span><span class="warr" id="wR">▶</span><span class="wsp" id="wS"></span></div>
 
   <div id="botL"><div class="grp" id="gL"></div></div>
   <div id="botR"><div class="grp" id="gR"></div></div>
@@ -166,6 +177,12 @@ es.onmessage = (e) => {
   R.style.top = (50 - d.pitch * 42) + "%";
   bar("bT","vT",d.thr,true); bar("bY","vY",d.yaw); bar("bR","vR",d.roll); bar("bP","vP",d.pitch);
   bar("bDL","vDL",d.dl || 0); bar("bDR","vDR",d.dr || 0);
+  // 第三拨轮：wd = 最近 300ms 内往哪边转（+1/-1/0），ws = 速度档位 1~5。
+  // 它是相对量、不回中，所以没有"位置"可画 —— 只能亮箭头表示正在转。
+  const wdir = d.wd || 0;
+  document.getElementById("wL").className = "warr" + (wdir < 0 ? " on" : "");
+  document.getElementById("wR").className = "warr" + (wdir > 0 ? " on" : "");
+  document.getElementById("wS").textContent = wdir ? (d.ws || "") : "";
   const on = new Set(d.btns || []);
   for (const k in chips) chips[k].className = "key" + (on.has(k) ? " on" : "");
   // 肩键 / Back
@@ -189,6 +206,106 @@ es.onmessage = (e) => {
     (lit("c", on.has("BTN_THUMBL") || on.has("KEY_ENTER")) ? " on" : "");
 };
 </script></body></html>""".replace("__FAVICON__", FAVICON)
+
+
+# --------------------------------------------------------------- DUML 滚轮
+# 遥控器上"右拨轮下面那个不回中的轮子"，硬件和固件都是通的，
+# 但内核没给它开 evdev 轴（event6 连 EV_REL 都没声明），
+# 它只活在 DJI 私有的 DUML 协议里：0x06/0xAE 状态包的第 4 个字节。
+_wheel = None
+
+
+class WheelFeed:
+    """把 DUML 那条相对量整理成仪表页能画的状态。
+
+    DUML 每 100ms 一个状态包，byte4 只说"这一刻在转没转、往哪边、几档"，
+    转完立刻回 00 —— 没有位置概念。所以没法画成滑块，只能亮一下。
+    DECAY 决定亮多久：15Hz 推送下约 4~5 帧，扫一眼就能看见。
+    """
+
+    DECAY = 0.30
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.dir = 0
+        self.sp = 0
+        self.at = 0.0
+
+    def on_tick(self, d, s):
+        with self.lock:
+            self.dir, self.sp, self.at = d, s, time.monotonic()
+
+    def snapshot(self):
+        with self.lock:
+            if not self.at:
+                return {"wd": 0, "ws": 0}
+            if time.monotonic() - self.at > self.DECAY:
+                return {"wd": 0, "ws": 0}
+            return {"wd": self.dir, "ws": self.sp}
+
+
+def start_wheel(adb, serial=None, verbose=False):
+    """起一条 DUML 读取线程，只读不写：不碰手柄轴、不碰任何键。
+
+    为什么需要 adb forward：40007 是遥控器 loopback 上的端口，
+    DJI 的协议服务监听着它，必须从 PC 侧打一条隧道进去。
+    """
+    global _wheel
+    if _wheel is not None:
+        return _wheel
+
+    import importlib.util
+    import subprocess
+
+    # 两种放法都认：duml/duml_wheel.py（本机布局）、同目录 duml_wheel.py（平铺拷走）
+    here = Path(__file__).parent
+    path = next((p for p in (here / "duml" / "duml_wheel.py",
+                             here / "duml_wheel.py") if p.exists()), None)
+    if path is None:
+        _wheel = WheelFeed()          # 没有滚轮模块就退化成"永远不亮"，不影响仪表
+        return _wheel
+    spec = importlib.util.spec_from_file_location("duml_wheel", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    feed = WheelFeed()
+    last = {"at": 0.0}
+
+    def ensure():
+        """建隧道；限流 10s，别把 adb 调用刷爆。
+
+        两个坑（都实测踩过）：
+        1) adb server 被别的东西重启后，"已连接"状态会丢 —— 这时 forward
+           会报 no devices。所以无线串号要顺手补一次 connect。
+        2) 端口被占用不算失败 —— 多半是另一个实例（或上次运行残留）
+           已经开好了一条到同一台遥控器的隧道，连上去照样能用。
+        """
+        now = time.monotonic()
+        if now - last["at"] < 10:
+            return
+        last["at"] = now
+
+        def run(*args):
+            try:
+                return subprocess.run([adb] + list(args),
+                                      capture_output=True, timeout=12)
+            except Exception:
+                return None
+
+        r = run("-s", serial, "forward", "tcp:40007", "tcp:40007") if serial \
+            else run("forward", "tcp:40007", "tcp:40007")
+        if r is not None and r.returncode != 0 and serial and ":" in serial:
+            run("connect", serial)                    # 顺手重连
+            run("-s", serial, "forward", "tcp:40007", "tcp:40007")
+
+    mod.DumlWheel(on_tick=feed.on_tick, ensure=ensure, verbose=verbose).start()
+    _wheel = feed
+    return feed
+
+
+def wheel_snapshot():
+    """没起滚轮线程（比如 --no-wheel / 演示模式）时也要能安全调用。"""
+    return _wheel.snapshot() if _wheel is not None else {"wd": 0, "ws": 0}
 
 
 def local_ip():

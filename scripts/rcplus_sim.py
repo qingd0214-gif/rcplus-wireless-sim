@@ -757,6 +757,8 @@ def main():
                     help="关掉「R3 = 关闭游戏」，只留 L3 菜单模式")
     ap.add_argument("--r3-hold", type=float, default=KILL_HOLD,
                     help=f"R3 要按住多少秒才关游戏(默认 {KILL_HOLD:g}，设 0 = 一碰就关)")
+    ap.add_argument("--no-wheel", action="store_true",
+                    help="不读第三拨轮（右拨轮下方那个不回中的），只保留摇杆功能")
     ap.add_argument("--mouse-speed", type=float, default=MOUSE_SPEED,
                     help=f"菜单·鼠标通道：五向键推住时光标速度 像素/秒(默认 {MOUSE_SPEED:g})")
     ap.add_argument("--menu", type=int, choices=[0, 1, 2, 3], default=0,
@@ -837,7 +839,9 @@ def main():
                 "dl": round(_hold["dl"], 3),
                 "dr": round(_hold["dr"], 3),
                 "hx": raw.get("ABS_HAT0X", 0), "hy": raw.get("ABS_HAT0Y", 0),
-                "btns": sorted(k for k, v in st.keys.items() if v)}
+                "btns": sorted(k for k, v in st.keys.items() if v),
+                # 第三拨轮（只在 DUML 里）：{"wd": 方向, "ws": 速度档}
+                **dashboard.wheel_snapshot()}
 
     # 遥控器点仪表页 → 自动启动模拟器（游戏已在跑就跳过，绝不重复开）
     def _dash_launch():
@@ -853,6 +857,9 @@ def main():
 
     try:
         import dashboard
+        if not a.no_wheel:
+            # 第三拨轮：只读，只上仪表 —— 不写手柄轴、不写任何键（2026-11-15）
+            dashboard.start_wheel(a.adb, serial)
         dashboard.start_server(_dash_snapshot, commands={"launch": _dash_launch})
         print(f"★ 摇杆仪表屏已就绪: http://{dashboard.local_ip()}:8123"
               f"  （遥控器 Firefox 打开；Firefox 菜单→添加到主屏幕 = 桌面图标）")
