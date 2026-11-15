@@ -78,6 +78,7 @@ RC Plus (Android evdev) --adb(WiFi/USB)--> rcplus_sim.py --ViGEm--> 虚拟 X360 
 给遥控器做"Uncrashed"桌面图标 APK → [references/apk-build.md](references/apk-build.md)
 （源码在 `assets/apk_build/`，r8/d8 对匿名类的 NPE 坑和 PE 图标提取的 RVA 坑都在里面）。
 
-**第三个拨轮（右拨轮下方、不回中）不在 evdev 里**，只在 DUML 私有协议里。
-`getevent` 找不到它**不代表没有** —— 读法、协议解析、`adb forward` 的坑
+**evdev 看不到的输入**：右拨轮下方那个「不回中」的滚轮、左肩 F/S/N 三档拨杆，
+都只走 DUML 私有协议。`getevent` 找不到它们**不代表没有** —— 读法、协议解析、
+"怎么判断某字段是位置型还是计数器"的排查方法
 → [references/duml-wheel.md](references/duml-wheel.md)（代码在 `scripts/duml/`）。

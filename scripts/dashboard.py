@@ -71,6 +71,13 @@ PAGE = """<!DOCTYPE html>
   .warr{font-size:15px;color:#2b453a}
   .warr.on{color:#4cd97b;text-shadow:0 0 10px #4cd97b}
   .wsp{width:34px;font-size:13px;color:#4cd97b;text-align:right}
+  /* 飞行模式三档（F/S/N）：左拨轮正下方 —— 与实机拨杆位置对应。
+     也是 DUML 里读的（byte2），evdev 完全没有它。 */
+  #mode{position:absolute;top:78px;left:8px;width:178px;display:flex;
+    align-items:center;gap:5px}
+  .mpc{border:1px solid #29433a;border-radius:5px;padding:2px 8px;
+    font-size:13px;color:#3d5b4c}
+  .mpc.on{background:#2c8f5b;color:#06120c;box-shadow:0 0 8px #4cd97b}
   .dname{font-size:14px;color:#8fb8a3;white-space:nowrap}
   .dtrack{flex:1;height:12px;background:#131b18;border:1px solid #29433a;border-radius:4px;
     position:relative;overflow:hidden}
@@ -107,6 +114,8 @@ PAGE = """<!DOCTYPE html>
   <div id="dialR" class="drow"><span class="dname">右拨轮</span><div class="dtrack"><div class="fill" id="bDR"></div></div><span class="dval" id="vDR"></span></div>
 
   <div id="whl"><span class="dname">滚轮</span><span class="warr" id="wL">◀</span><span class="warr" id="wR">▶</span><span class="wsp" id="wS"></span></div>
+
+  <div id="mode"><span class="dname">模式</span><span class="mpc" id="mF">F</span><span class="mpc" id="mS">S</span><span class="mpc" id="mN">N</span></div>
 
   <div id="botL"><div class="grp" id="gL"></div></div>
   <div id="botR"><div class="grp" id="gR"></div></div>
@@ -183,6 +192,11 @@ es.onmessage = (e) => {
   document.getElementById("wL").className = "warr" + (wdir < 0 ? " on" : "");
   document.getElementById("wR").className = "warr" + (wdir > 0 ? " on" : "");
   document.getElementById("wS").textContent = wdir ? (d.ws || "") : "";
+  // 飞行模式三档：md 是 "F"/"S"/"N"（来自 DUML byte2，位置型，会一直停住）
+  const md = d.md || "";
+  document.getElementById("mF").className = "mpc" + (md === "F" ? " on" : "");
+  document.getElementById("mS").className = "mpc" + (md === "S" ? " on" : "");
+  document.getElementById("mN").className = "mpc" + (md === "N" ? " on" : "");
   const on = new Set(d.btns || []);
   for (const k in chips) chips[k].className = "key" + (on.has(k) ? " on" : "");
   // 肩键 / Back
@@ -221,27 +235,38 @@ class WheelFeed:
     DUML 每 100ms 一个状态包，byte4 只说"这一刻在转没转、往哪边、几档"，
     转完立刻回 00 —— 没有位置概念。所以没法画成滑块，只能亮一下。
     DECAY 决定亮多久：15Hz 推送下约 4~5 帧，扫一眼就能看见。
+
+    同一个包里 byte2 是飞行模式三档拨杆（位置型，会停住，实测静止时
+    25 秒零跳变）。实测映射：0x02=F 0x00=S 0x01=N。
+    注意它不在 evdev 里 —— 7 个节点全盯过，拨杆期间零事件。
     """
 
     DECAY = 0.30
+    MODES = {0x02: "F", 0x00: "S", 0x01: "N"}
 
     def __init__(self):
         self.lock = threading.Lock()
         self.dir = 0
         self.sp = 0
         self.at = 0.0
+        self.mode = None
 
     def on_tick(self, d, s):
         with self.lock:
             self.dir, self.sp, self.at = d, s, time.monotonic()
 
+    def on_mode(self, raw):
+        with self.lock:
+            self.mode = raw
+
     def snapshot(self):
         with self.lock:
+            mode = self.MODES.get(self.mode, "")
             if not self.at:
-                return {"wd": 0, "ws": 0}
+                return {"wd": 0, "ws": 0, "md": mode}
             if time.monotonic() - self.at > self.DECAY:
-                return {"wd": 0, "ws": 0}
-            return {"wd": self.dir, "ws": self.sp}
+                return {"wd": 0, "ws": 0, "md": mode}
+            return {"wd": self.dir, "ws": self.sp, "md": mode}
 
 
 def start_wheel(adb, serial=None, verbose=False):
@@ -298,14 +323,16 @@ def start_wheel(adb, serial=None, verbose=False):
             run("connect", serial)                    # 顺手重连
             run("-s", serial, "forward", "tcp:40007", "tcp:40007")
 
-    mod.DumlWheel(on_tick=feed.on_tick, ensure=ensure, verbose=verbose).start()
+    mod.DumlWheel(on_tick=feed.on_tick, on_mode=feed.on_mode,
+                  ensure=ensure, verbose=verbose).start()
     _wheel = feed
     return feed
 
 
 def wheel_snapshot():
     """没起滚轮线程（比如 --no-wheel / 演示模式）时也要能安全调用。"""
-    return _wheel.snapshot() if _wheel is not None else {"wd": 0, "ws": 0}
+    return _wheel.snapshot() if _wheel is not None else \
+        {"wd": 0, "ws": 0, "md": ""}
 
 
 def local_ip():

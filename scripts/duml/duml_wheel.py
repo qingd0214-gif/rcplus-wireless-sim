@@ -80,9 +80,11 @@ class DumlWheel(threading.Thread):
     """
 
     def __init__(self, on_tick=None, port=PORT, host="127.0.0.1", verbose=False,
-                 ensure=None):
+                 ensure=None, on_mode=None):
         super().__init__(daemon=True)
         self.on_tick = on_tick
+        self.on_mode = on_mode        # 飞行模式三档拨杆 F/S/N 变化时回调
+        self.mode = None              # 最近一次读到的档位原始值
         self.port, self.host = port, host
         self.verbose = verbose
         self.ensure = ensure          # 连之前先跑一下（用来建 adb forward 隧道）
@@ -142,6 +144,14 @@ class DumlWheel(threading.Thread):
                     for f in frames:
                         if len(f) >= 28 and f[9] == 0x06 and f[10] == 0xAE:
                             self.pkts += 1
+                            mode = f[11 + 2]          # byte2 = 飞行模式档位
+                            if mode != self.mode:
+                                self.mode = mode
+                                if self.on_mode:
+                                    try:
+                                        self.on_mode(mode)
+                                    except Exception:
+                                        pass
                             d, sp = decode_wheel(f[11 + 4])
                             if d and self.on_tick:
                                 self.ticks += 1
