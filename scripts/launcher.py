@@ -21,8 +21,28 @@ from pathlib import Path
 # 掐断摇杆数据流。必须设在任何 adb 调用之前（详见 rcplus_sim.py 同段注释）。
 os.environ.setdefault("ANDROID_ADB_SERVER_PORT", "5038")
 
+# ---- 后台模式（pythonw）支持 ------------------------------------
+# pythonw 下 sys.stdout/sys.stderr 是 None，print 会直接崩；
+# 且没有控制台后，每个控制台子进程（adb 等）都会闪一个黑框。
+# 对策：stdout 重定向到日志文件 + 子进程统一加 CREATE_NO_WINDOW。
+_NOWIN = 0x08000000 if os.name == "nt" else 0     # CREATE_NO_WINDOW
+BG_LOG = Path(__file__).resolve().parent / "launcher_bg.log"
+_bg_handle = None
+
 HERE = Path(__file__).resolve().parent
 HERE_STR = str(HERE)
+
+
+def _setup_background():
+    """pythonw 启动时把输出接到日志文件，print 才能用，也方便排查。"""
+    global _bg_handle
+    try:
+        _bg_handle = open(BG_LOG, "a", buffering=1,
+                          encoding="utf-8", errors="ignore")
+        sys.stdout = sys.stderr = _bg_handle
+        print(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} 后台启动 =====")
+    except Exception:
+        pass
 
 # 关键：不能用裸的 python。系统 PATH 里第一个 python 是别的虚拟环境，没有 vgamepad。
 # 2026-11-15 事故：WorkBuddy 的托管 python 在重启时被重置成干净环境，
@@ -40,7 +60,8 @@ def _pick_python():
             continue
         try:
             r = subprocess.run([c, "-c", "import vgamepad"],
-                               capture_output=True, timeout=25)
+                               capture_output=True, timeout=25,
+                               creationflags=_NOWIN)
             if r.returncode == 0:
                 return os.path.normpath(c)
         except Exception:
@@ -130,10 +151,15 @@ def run_sim(*args, wait=True):
     """在当前控制台跑 rcplus_sim.py，Ctrl+C 能正常打断。
 
     wait=False 用于双击自动启动：跑完直接退出，不再要你按回车。
+    后台模式（pythonw）下把子进程输出接到日志文件，并把窗口类
+    子进程设为不弹窗。
     """
-    cmd = [PYEXE, str(HERE / "rcplus_sim.py"), *args]
+    cmd = [PYEXE, "-u", str(HERE / "rcplus_sim.py"), *args]
+    kw = {"creationflags": _NOWIN}
+    if _bg_handle is not None:
+        kw["stdout"] = kw["stderr"] = _bg_handle
     try:
-        code = subprocess.call(cmd, cwd=HERE_STR)
+        code = subprocess.call(cmd, cwd=HERE_STR, **kw)
     except KeyboardInterrupt:
         if not wait:
             raise          # 常驻模式下 Ctrl+C = 真退出，交给上层处理
@@ -154,6 +180,9 @@ def check():
 
 
 def main():
+    # 后台模式（pythonw 双击 .vbs/.bat 启动）：先接管输出，print 才能用
+    if sys.stdout is None:
+        _setup_background()
     # launcher 也加单实例锁：launcher 本身没锁，双击两次会拉起两个 launcher，
     # 各自 spawn 一份 rcplus_sim（rcplus_sim 自己的互斥体之前也是坏的）。
     import ctypes
@@ -301,7 +330,8 @@ def _rc_ip_from_usb():
     """趁遥控器插着线，读它的 WiFi IP。"""
     try:
         r = subprocess.run([ADB, "shell", "ip -f inet addr show wlan0"],
-                           capture_output=True, text=True, timeout=15)
+                           capture_output=True, text=True, timeout=15,
+                           creationflags=_NOWIN)
     except Exception:
         return None
     import re
@@ -312,7 +342,8 @@ def _rc_ip_from_usb():
 def _usb_serials():
     """当前插着线的 adb 设备（不含 IP:端口 这类无线设备）。"""
     try:
-        r = subprocess.run([ADB, "devices"], capture_output=True, text=True, timeout=15)
+        r = subprocess.run([ADB, "devices"], capture_output=True, text=True,
+                           timeout=15, creationflags=_NOWIN)
     except Exception:
         return []
     return [l.split("\t")[0].strip() for l in (r.stdout or "").splitlines()[1:]
@@ -327,14 +358,16 @@ def _wifi_up(ip):
     launcher 就退出，开机后不会自动重连。现在超时=没连上，安静的返回 False。
     """
     try:
-        subprocess.run([ADB, "connect", f"{ip}:5555"], capture_output=True, timeout=12)
+        subprocess.run([ADB, "connect", f"{ip}:5555"], capture_output=True,
+                       timeout=12, creationflags=_NOWIN)
     except subprocess.TimeoutExpired:
         print("      （adb connect 超时，遥控器可能已关机或不在同一网络）")
         return False
     except Exception:
         return False
     try:
-        r = subprocess.run([ADB, "devices"], capture_output=True, text=True, timeout=15)
+        r = subprocess.run([ADB, "devices"], capture_output=True, text=True,
+                           timeout=15, creationflags=_NOWIN)
     except Exception:
         return False
     return f"{ip}:5555" in (r.stdout or "")

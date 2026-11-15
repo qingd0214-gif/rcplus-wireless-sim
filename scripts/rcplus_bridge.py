@@ -36,10 +36,14 @@ rcplus_bridge.py — DJI RC Plus / RC Pro  ->  CRSF(ELRS) 桥接
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
 import time
+
+# 后台模式（pythonw）必需：控制台子进程禁止弹黑框（见 rcplus_sim.py 同名常量）
+_NOWIN = 0x08000000 if os.name == "nt" else 0
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -240,7 +244,8 @@ def run_live(out):
 
     cmd = [CONFIG["adb"], "shell", f"getevent -lt {CONFIG['input_dev']}"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            bufsize=1, universal_newlines=True, encoding="utf-8", errors="ignore")
+                            bufsize=1, universal_newlines=True, encoding="utf-8", errors="ignore",
+                            creationflags=_NOWIN)
 
     stop = threading.Event()
     period = 1.0 / CONFIG["rate_hz"]
@@ -273,7 +278,8 @@ def run_selftest(seconds=10):
     """摇杆自检：判断每个轴松手后是否自动回中。"""
     cmd = [CONFIG["adb"], "shell", f"getevent -lt {CONFIG['input_dev']}"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            bufsize=1, universal_newlines=True, encoding="utf-8", errors="ignore")
+                            bufsize=1, universal_newlines=True, encoding="utf-8", errors="ignore",
+                            creationflags=_NOWIN)
     st = State()
     import collections
     hist = collections.defaultdict(list)

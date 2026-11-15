@@ -314,7 +314,8 @@ def start_wheel(adb, serial=None, verbose=False):
         def run(*args):
             try:
                 return subprocess.run([adb] + list(args),
-                                      capture_output=True, timeout=12)
+                                      capture_output=True, timeout=12,
+                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             except Exception:
                 return None
 

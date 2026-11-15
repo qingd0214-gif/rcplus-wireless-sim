@@ -35,6 +35,11 @@ import subprocess
 import sys
 import threading
 import time
+
+# 后台模式（pythonw 无窗口运行）必需：给所有控制台子进程加 CREATE_NO_WINDOW，
+# 否则每次 adb / tasklist 调用都会闪一个黑框。控制台模式下加它无害
+# （子进程继承父控制台的句柄，输出照常显示）。
+_NOWIN = 0x08000000 if os.name == "nt" else 0    # CREATE_NO_WINDOW
 from pathlib import Path
 
 # 独占一个 adb server 端口（默认 5037）。装了 MuMu/雷电这类模拟器后，它们
@@ -205,7 +210,7 @@ def game_pids():
         # 注意：中文 Windows 下 tasklist 输出是 GBK，不能用 text=True
         r = subprocess.run(
             ["tasklist", "/FI", f"IMAGENAME eq {GAME_PROC}", "/FO", "CSV", "/NH"],
-            capture_output=True, timeout=10,
+            capture_output=True, timeout=10, creationflags=_NOWIN,
         )
         raw = r.stdout or b""
     except Exception:
@@ -231,7 +236,8 @@ def game_pids():
 def kill_game():
     pids = game_pids()
     for p in pids:
-        subprocess.run(["taskkill", "/PID", p, "/F"], capture_output=True)
+        subprocess.run(["taskkill", "/PID", p, "/F"], capture_output=True,
+                       creationflags=_NOWIN)
     print("    已关闭游戏。" if pids else "    游戏本来就没在运行。")
     return len(pids)
 
@@ -253,7 +259,8 @@ class BatteryGuard(threading.Thread):
             cmd = [self.adb] + (["-s", self.serial] if self.serial else []) \
                   + ["shell", "dumpsys battery"]
             out = subprocess.run(cmd, capture_output=True, timeout=15,
-                                 encoding="gbk", errors="ignore").stdout or ""
+                                 encoding="gbk", errors="ignore",
+                                 creationflags=_NOWIN).stdout or ""
         except Exception:
             return None
         for line in out.splitlines():
@@ -428,7 +435,8 @@ class KeepAwake(threading.Thread):
     def _sh(self, *args, timeout=10):
         cmd = [self.adb] + (["-s", self.serial] if self.serial else []) + ["shell", *args]
         try:
-            return subprocess.run(cmd, capture_output=True, timeout=timeout) \
+            return subprocess.run(cmd, capture_output=True, timeout=timeout,
+                                  creationflags=_NOWIN) \
                 .stdout.decode("utf-8", "ignore")
         except Exception:
             return ""
@@ -550,7 +558,7 @@ class RcReader(threading.Thread):
             return
         try:
             subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
-                           capture_output=True, timeout=10)
+                           capture_output=True, timeout=10, creationflags=_NOWIN)
         except Exception:
             try:
                 p.terminate()
@@ -567,7 +575,7 @@ class RcReader(threading.Thread):
             return
         try:
             subprocess.run([self.adb, "connect", self.serial],
-                           capture_output=True, timeout=15)
+                           capture_output=True, timeout=15, creationflags=_NOWIN)
         except Exception:
             pass
 
@@ -588,6 +596,7 @@ class RcReader(threading.Thread):
                     stdin=subprocess.DEVNULL,          # 必须：否则 adb shell 会随父进程 stdin 关闭而退出
                     bufsize=1, universal_newlines=True,
                     encoding="utf-8", errors="ignore",
+                    creationflags=_NOWIN,
                 )
             except FileNotFoundError:
                 print(f"\n[错误] 找不到 adb: {self.adb}")
@@ -668,7 +677,8 @@ def adb_preflight(adb, want_device=None, wifi=False):
     """确认 adb 可用且遥控器在线。返回设备序列号或 None。
     wifi=True 时优先选 IP 形式的串号（无线连接）。"""
     try:
-        out = subprocess.run([adb, "devices"], capture_output=True, text=True, timeout=15).stdout
+        out = subprocess.run([adb, "devices"], capture_output=True, text=True,
+                             timeout=15, creationflags=_NOWIN).stdout
     except FileNotFoundError:
         print(f"[错误] 找不到 adb.exe: {adb}")
         print("       改 CONFIG['adb'] 或 --adb 参数指向正确的 adb")
@@ -802,7 +812,8 @@ def main():
 
     adb = a.adb
     if a.wifi:
-        subprocess.run([adb, "connect", f"{a.wifi}:5555"], check=False)
+        subprocess.run([adb, "connect", f"{a.wifi}:5555"], check=False,
+                       creationflags=_NOWIN)
 
     serial = None
     if not a.demo:
@@ -1155,7 +1166,8 @@ def main():
                     try:
                         subprocess.run([a.adb, "-s", serial, "shell",
                                         "am force-stop com.rcplus.dashboard"],
-                                       capture_output=True, timeout=10)
+                                       capture_output=True, timeout=10,
+                                       creationflags=_NOWIN)
                         print(">>> 遥控器仪表页已关闭。")
                     except Exception as e:
                         print(f"[!] 关遥控器仪表页失败（不影响其他操作）: {e}")
