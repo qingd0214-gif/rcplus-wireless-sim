@@ -1133,17 +1133,25 @@ def main():
     # --- 拨轮调游戏音量 ---
     vol = None
     if not a.no_vol:
-        vol = VolumeCtl(axis=a.vol_axis, speed=a.vol_speed)
-        if a.vol_start is not None:
-            vol.vol = max(0.0, min(1.0, a.vol_start))
-        vol.start()                 # 后台线程管 COM，主循环零阻塞
-        name = "右拨轮" if a.vol_axis == "ABS_RZ" else "左拨轮"
-        print(f"★ {name} = 游戏音量（当前 {vol.vol*100:.0f}%）"
-              f" · 拨一下加减，松手停住 · 音量自动记住")
-        print(f"  只调游戏进程自己的音量，不影响系统/语音 · "
-              f"灵敏度 {a.vol_speed:g}（--vol-speed 可调）")
-        if a.vol_axis == "ABS_Z":
-            print("  [!] 左拨轮已被音量占用 → 拨轮重置自动关闭，重置仍可用 L1")
+        try:
+            import pycaw.pycaw            # noqa: F401  只做存在性检查
+            import comtypes               # noqa: F401
+        except ImportError:
+            # 2026-11-16 踩过：venv 只装了 vgamepad，pycaw 缺失时拨轮静默失效
+            print("[!] 缺 pycaw / comtypes：拨轮调音量不可用（其他功能不受影响）")
+            print("    装：C:\\rcplus-env\\Scripts\\python.exe -m pip install pycaw comtypes")
+        else:
+            vol = VolumeCtl(axis=a.vol_axis, speed=a.vol_speed)
+            if a.vol_start is not None:
+                vol.vol = max(0.0, min(1.0, a.vol_start))
+            vol.start()             # 后台线程管 COM，主循环零阻塞
+            name = "右拨轮" if a.vol_axis == "ABS_RZ" else "左拨轮"
+            print(f"★ {name} = 游戏音量（当前 {vol.vol*100:.0f}%）"
+                  f" · 拨一下加减，松手停住 · 音量自动记住")
+            print(f"  只调游戏进程自己的音量，不影响系统/语音 · "
+                  f"灵敏度 {a.vol_speed:g}（--vol-speed 可调）")
+            if a.vol_axis == "ABS_Z":
+                print("  [!] 左拨轮已被音量占用 → 拨轮重置自动关闭，重置仍可用 L1")
 
     if a.launch:
         time.sleep(1.5)                   # 等 Windows 把设备节点挂好

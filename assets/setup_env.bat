@@ -27,11 +27,15 @@ if not exist "%PYEXE%" goto fail
 echo [2/3] Upgrading pip ...
 "%PYEXE%" -m pip install --disable-pip-version-check -q --upgrade pip
 
-echo [3/3] Installing vgamepad ...
+echo [3/4] Installing vgamepad ...
 "%PYEXE%" -m pip install --disable-pip-version-check -q vgamepad
 if errorlevel 1 goto fail
 
-"%PYEXE%" -c "import vgamepad" >nul 2>&1
+echo [4/4] Installing pycaw + comtypes (volume wheel) ...
+"%PYEXE%" -m pip install --disable-pip-version-check -q pycaw comtypes
+if errorlevel 1 goto fail
+
+"%PYEXE%" -c "import vgamepad, pycaw.pycaw, comtypes" >nul 2>&1
 if errorlevel 1 goto fail
 
 echo.
