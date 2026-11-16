@@ -53,6 +53,18 @@ RC Plus (Android evdev) --adb(WiFi/USB)--> rcplus_sim.py --ViGEm--> 虚拟 X360 
 6. 游戏内绑定：Controls 里选 `XInput Controller #1`，Throttle=左摇杆Y / Yaw=左摇杆X /
    Roll=右摇杆X / Pitch=右摇杆Y；Deadzone 设 0；SDL 轴 2/4 是扳机别绑。
 
+## 硬件前提：左摇杆回中弹簧必须拆掉
+
+- 本项目按「油门不回中」设计（绝对值油门：杆位 = 油门）。弹簧没拆的话松手油门
+  自动弹回 50%，模拟器里压杆/爬升都做不到。
+- 拆掉后开机自检会报"摇杆未回中"并持续报警：遥控器快捷面板的**勿扰**能关，
+  且 `rcplus_sim` 在首次连接和每次 WiFi 重连时会自动写 `settings put global zen_mode 1`
+  （大疆固件重启会重置勿扰，所以要每次补写）。
+- 想要穿越机手感仍可用 Back 切**锁存模式**（推加/拉减/松手保持）。
+
+**完整按键映射表**（每个键 → 手柄输出 → 功能、仪表页每个元素含义）见
+[README.md 的「按键映射（完整表）」](README.md#按键映射完整表)。
+
 ## 必须知道的运行事实
 
 - **退出码协议**：`rcplus_sim` 返回 10 = 用户按 R3 主动关游戏 → launcher 转
@@ -67,6 +79,14 @@ RC Plus (Android evdev) --adb(WiFi/USB)--> rcplus_sim.py --ViGEm--> 虚拟 X360 
   MuMu/雷电等模拟器的 adb 抢占重启，一重启事件流就断。
 - 遥控器屏幕一休眠，DJI 驱动就停止上报 → KeepAwake 线程每 60s 补 WAKEUP，
   并把 `screen_off_timeout` 设为最大值。
+- **DUML 客户端跟随游戏生命周期**：仪表要读滚轮/FSN 必须挂 DUML 客户端，但真机
+  飞行时飞行链路也走 DUML，常驻客户端会抢遥控器处理能力（实测打杆变肉）。
+  所以 `rcplus_sim` 只在游戏运行时连 DUML，游戏退出/待命自动 `stop_wheel()`；
+  待命时也跳过电量查询（`dumpsys` 会挤停数据通道）。飞行时仪表上滚轮/档位是灭的，
+  那是正常现象，不是坏了。
+- **后台运行**：`pythonw.exe` 启动 `launcher.py --auto` 即无窗口常驻，输出写
+  `scripts/launcher_bg.log`；所有子进程都带 `CREATE_NO_WINDOW`，不会闪黑框。
+  停后台按命令行匹配 kill（launcher.py|rcplus_sim.py）。
 
 ## 诊断
 
