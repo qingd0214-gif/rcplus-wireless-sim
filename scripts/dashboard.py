@@ -37,8 +37,11 @@ PAGE = """<!DOCTYPE html>
   /* 摇杆居中；左右两条留白给"贴边的竖排按键"和"上角拨轮"绝对定位用 */
   #wrap{position:relative;height:100%;box-sizing:border-box;padding:6px 66px;
     display:flex;flex-direction:column}
-  #top{display:flex;justify-content:space-between;
-    align-items:center;font-size:17px;color:#7fdca0;white-space:nowrap}
+  #top{display:flex;justify-content:space-between;align-items:center;gap:12px;
+    font-size:17px;color:#7fdca0;white-space:nowrap;min-height:34px}
+  /* 顶栏四块（标题 / 延迟 / 启动 / 连接）均分整行：没有中间大空档，
+     每块内容定宽，数字位数变化时互相不推挤 */
+  #launchBtn{width:150px;text-align:center;box-sizing:border-box;white-space:nowrap}
   #main{flex:1;display:flex;align-items:center;justify-content:center}
   /* 2×3 网格：上排两条(油门/横滚) · 中排两个摇杆 · 下排两条(偏航/俯仰) */
   #cluster{display:grid;grid-template-columns:auto auto;gap:8px 26px;
@@ -100,21 +103,26 @@ PAGE = """<!DOCTYPE html>
   .pkey{border:1px solid #29433a;border-radius:6px;color:#4a6b5b;font-size:14px;
     display:flex;align-items:center;justify-content:center}
   .pkey.on{background:#2c8f5b;color:#06120c;box-shadow:0 0 10px #4cd97b}
-  #conn{font-size:14px;color:#c85a5a}
-  #conn.ok{color:#7fdca0}
-  /* 摇杆链路延迟：绿=好(<30ms) 黄=注意(<100ms) 红=差(≥100ms) */
-  #lat{font-size:14px;color:#4a6b5b}
-  #lat b{color:#4cd97b;font-weight:normal}
+  /* 摇杆链路延迟：绿=好(<30ms) 黄=注意(<100ms) 红=差(≥100ms)
+     数字定宽 + tabular-nums：1 位 → 3 位时不再挤动旁边的元素 */
+  #lat{font-size:14px;color:#4a6b5b;display:flex;align-items:baseline;gap:3px;
+    font-variant-numeric:tabular-nums}
+  #lat b{display:inline-block;width:36px;text-align:right;
+    color:#4cd97b;font-weight:normal}
   #lat.warn b{color:#e8c840}
   #lat.bad b{color:#c85a5a}
+  #eps{display:inline-block;width:30px;text-align:right}
+  #conn{display:inline-block;width:92px;text-align:right;font-size:13px;
+    color:#c85a5a;overflow:hidden;text-overflow:ellipsis}
+  #conn.ok{color:#7fdca0}
 </style></head>
 <body><div id="wrap">
   <div id="top"><span>Uncrashed · 摇杆仪表</span>
-    <span><button id="launchBtn" onclick="launchSim()"
+    <span id="lat">摇杆延迟 <b>--</b> ms · <span id="eps">--</span> 条/s</span>
+    <button id="launchBtn" onclick="launchSim()"
       style="background:#1c3a2d;color:#7fdca0;border:1px solid #2c8f5b;border-radius:6px;
-      padding:4px 12px;font-size:15px;font-family:inherit;margin-right:10px">▶ 启动模拟器</button>
-    <span id="lat">摇杆延迟 <b>--</b> ms · <span id="eps">--</span> 条/s　</span>
-    <span id="conn">连接中…</span></span></div>
+      padding:4px 12px;font-size:15px;font-family:inherit">▶ 启动模拟器</button>
+    <span id="conn">连接中…</span></div>
 
   <div id="dialL" class="drow"><span class="dname">左拨轮</span><div class="dtrack"><div class="fill" id="bDL"></div></div><span class="dval" id="vDL"></span></div>
   <div id="dialR" class="drow"><span class="dname">右拨轮</span><div class="dtrack"><div class="fill" id="bDR"></div></div><span class="dval" id="vDR"></span></div>
