@@ -30,6 +30,7 @@ rcplus_sim.py — 把 DJI RC Plus / RC Pro 变成电脑上的 Xbox 360 手柄
 import argparse
 import math
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -40,6 +41,9 @@ import time
 # 否则每次 adb / tasklist 调用都会闪一个黑框。控制台模式下加它无害
 # （子进程继承父控制台的句柄，输出照常显示）。
 _NOWIN = 0x08000000 if os.name == "nt" else 0    # CREATE_NO_WINDOW
+
+# getevent -lt 每行开头的内核时间戳：[   123.456789]（设备 uptime 秒）
+_KTS_RE = re.compile(r"^\[\s*(\d+)\.(\d{6})\]")
 from pathlib import Path
 
 # 独占一个 adb server 端口（默认 5037）。装了 MuMu/雷电这类模拟器后，它们
@@ -544,6 +548,15 @@ class RcReader(threading.Thread):
         self.stop = threading.Event()
         self.last_data = time.time()   # 最近一次收到摇杆/按键数据的时间（停滞诊断用）
         self.last_beat = time.time()   # 最近一次收到设备侧心跳 __HB__ 的时间（判活）
+        # --- 实时链路延迟（仪表页显示用）---
+        # getevent -lt 每行带设备内核时间戳 kts；PC 收到时刻 arrival。
+        # (arrival - kts) 含未知的时钟偏移，没有绝对意义，但它【随时间的波动】
+        # 就是纯传输延迟 —— 减去滑动窗口内的最小值（=最优路径）得到漂移。
+        self.latency_ms = None         # 平滑后的传输延迟（ms，相对窗口最优，≥0）
+        self.eps = 0.0                 # 事件流速率（条/秒，含 EV_SYN）
+        self._delays = []              # 最近 400 个样本
+        self._eps_at = time.time()     # 速率窗口起点
+        self._eps_n = 0
 
     def kill_proc(self):
         """杀掉 getevent 子进程（连树）。
@@ -637,6 +650,20 @@ class RcReader(threading.Thread):
                         self.last_beat = time.time()
                         got_any = True            # 有回音 → 不算连接级故障
                         continue
+                    m = _KTS_RE.match(line)
+                    if m:                          # 实时延迟 + 事件速率（见 __init__ 注释）
+                        now = time.time()
+                        kts = int(m.group(1)) + int(m.group(2)) / 1e6
+                        self._delays.append(now - kts)
+                        if len(self._delays) > 400:
+                            self._delays.pop(0)
+                        drift = (self._delays[-1] - min(self._delays)) * 1000.0
+                        self.latency_ms = drift if self.latency_ms is None \
+                            else self.latency_ms + (drift - self.latency_ms) * 0.25
+                        self._eps_n += 1
+                        if now - self._eps_at >= 1.0:
+                            self.eps = self._eps_n / (now - self._eps_at)
+                            self._eps_at, self._eps_n = now, 0
                     if parse_line(line, self.state):
                         got_any = True
                         self.got_data = True
@@ -876,7 +903,7 @@ def main():
             _hold["dr"], _hold["tdr"] = dr, now
         elif now - _hold["tdr"] > 1.5:
             _hold["dr"] = 0.0
-        return {"thr": round(-norm(raw.get("ABS_Y", THROTTLE_LO), THROTTLE_LO, 0, 32767), 3),
+        snap = {"thr": round(-norm(raw.get("ABS_Y", THROTTLE_LO), THROTTLE_LO, 0, 32767), 3),
                 "yaw": round(norm(raw.get("ABS_X", 0), -32768, 0, 32767), 3),
                 "roll": round(norm(raw.get("ABS_RX", 0), -32768, 0, 32767), 3),
                 "pitch": round(-norm(raw.get("ABS_RY", 0), -32768, 0, 32767), 3),
@@ -886,6 +913,13 @@ def main():
                 "btns": sorted(k for k, v in st.keys.items() if v),
                 # 第三拨轮（只在 DUML 里）：{"wd": 方向, "ws": 速度档}
                 **dashboard.wheel_snapshot()}
+        # 实时摇杆链路延迟（内核时间戳 vs PC 到达，相对滑动窗口最优的漂移）
+        # + 事件流速率。readers 在下方才创建，闭包晚绑定没问题。
+        rd = readers[0] if readers else None
+        if rd is not None and rd.latency_ms is not None:
+            snap["lat"] = int(round(rd.latency_ms))
+            snap["eps"] = round(rd.eps, 1)
+        return snap
 
     # 遥控器点仪表页 → 自动启动模拟器（游戏已在跑就跳过，绝不重复开）
     def _dash_launch():

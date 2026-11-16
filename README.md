@@ -241,6 +241,7 @@ powershell -Command "Get-CimInstance Win32_Process | ? { $_.CommandLine -match '
 | `模式 F S N` | 飞行模式拨杆当前档位，常亮 |
 | `L1 L2 L3` / `R1 R2 R3` 键灯 | 外壳 C1~C6，按下即亮 |
 | `LB` `Back` `RB` 键灯 | 肩键 / Back |
+| `摇杆延迟 X ms · N 条/s` | **实时链路延迟**：`getevent` 内核时间戳 vs PC 到达时刻的漂移（相对滑动窗口最优路径）。绿 <30ms / 黄 <100ms / 红 ≥100ms。只在推杆时更新，静止时显示最后一次的值 |
 | 五向键十字 + 中心点 | 五向键方向与中键（脉冲上报，做 **450ms 余亮**） |
 | `▶ 启动模拟器` 按钮 | 一键拉起 Uncrashed；页面连上时若游戏没跑，也会自动发一次启动 |
 

@@ -75,7 +75,7 @@ def main():
     def snapshot():
         raw = st.raw
         # 与 rcplus_sim._dash_snapshot 同一套显示符号：油门/俯仰取反
-        return {"thr": round(-R.norm(raw.get("ABS_Y", R.THROTTLE_LO),
+        snap = {"thr": round(-R.norm(raw.get("ABS_Y", R.THROTTLE_LO),
                                         R.THROTTLE_LO, 0, 32767), 3),
                 "yaw": round(R.norm(raw.get("ABS_X", 0), -32768, 0, 32767), 3),
                 "roll": round(R.norm(raw.get("ABS_RX", 0), -32768, 0, 32767), 3),
@@ -86,6 +86,12 @@ def main():
                 "btns": sorted(k for k, v in st.keys.items() if v),
                 # 第三拨轮（只在 DUML 里）：{"wd": 方向, "ws": 速度档}
                 **dashboard.wheel_snapshot()}
+        # 实时摇杆链路延迟（同 rcplus_sim._dash_snapshot）
+        rd = readers[0] if readers else None
+        if rd is not None and getattr(rd, "latency_ms", None) is not None:
+            snap["lat"] = int(round(rd.latency_ms))
+            snap["eps"] = round(rd.eps, 1)
+        return snap
 
     if not a.no_wheel:
         dashboard.start_wheel(a.adb, serial)

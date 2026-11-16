@@ -102,12 +102,18 @@ PAGE = """<!DOCTYPE html>
   .pkey.on{background:#2c8f5b;color:#06120c;box-shadow:0 0 10px #4cd97b}
   #conn{font-size:14px;color:#c85a5a}
   #conn.ok{color:#7fdca0}
+  /* 摇杆链路延迟：绿=好(<30ms) 黄=注意(<100ms) 红=差(≥100ms) */
+  #lat{font-size:14px;color:#4a6b5b}
+  #lat b{color:#4cd97b;font-weight:normal}
+  #lat.warn b{color:#e8c840}
+  #lat.bad b{color:#c85a5a}
 </style></head>
 <body><div id="wrap">
   <div id="top"><span>Uncrashed · 摇杆仪表</span>
     <span><button id="launchBtn" onclick="launchSim()"
       style="background:#1c3a2d;color:#7fdca0;border:1px solid #2c8f5b;border-radius:6px;
       padding:4px 12px;font-size:15px;font-family:inherit;margin-right:10px">▶ 启动模拟器</button>
+    <span id="lat">摇杆延迟 <b>--</b> ms · <span id="eps">--</span> 条/s　</span>
     <span id="conn">连接中…</span></span></div>
 
   <div id="dialL" class="drow"><span class="dname">左拨轮</span><div class="dtrack"><div class="fill" id="bDL"></div></div><span class="dval" id="vDL"></span></div>
@@ -186,6 +192,17 @@ es.onmessage = (e) => {
   R.style.top = (50 - d.pitch * 42) + "%";
   bar("bT","vT",d.thr,true); bar("bY","vY",d.yaw); bar("bR","vR",d.roll); bar("bP","vP",d.pitch);
   bar("bDL","vDL",d.dl || 0); bar("bDR","vDR",d.dr || 0);
+  // 实时摇杆链路延迟：getevent 内核时间戳 vs PC 到达时刻的漂移
+  // （相对滑动窗口内最优路径，≥0）。绿 <30ms / 黄 <100ms / 红 ≥100ms。
+  // 注意：只在推杆时才产生新事件，静止时显示的是最后一次的值。
+  const latEl = document.getElementById("lat");
+  if (d.lat == null) {
+    latEl.querySelector("b").textContent = "--";
+  } else {
+    latEl.querySelector("b").textContent = d.lat;
+    latEl.className = d.lat >= 100 ? "bad" : (d.lat >= 30 ? "warn" : "");
+    document.getElementById("eps").textContent = d.eps == null ? "--" : d.eps;
+  }
   // 第三拨轮：wd = 最近 300ms 内往哪边转（+1/-1/0），ws = 速度档位 1~5。
   // 它是相对量、不回中，所以没有"位置"可画 —— 只能亮箭头表示正在转。
   const wdir = d.wd || 0;
