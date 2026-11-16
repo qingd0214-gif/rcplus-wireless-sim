@@ -86,8 +86,9 @@ def main():
                 "btns": sorted(k for k, v in st.keys.items() if v),
                 # 第三拨轮（只在 DUML 里）：{"wd": 方向, "ws": 速度档}
                 **dashboard.wheel_snapshot()}
-        # 实时摇杆链路延迟（同 rcplus_sim._dash_snapshot）
-        rd = readers[0] if readers else None
+        # 实时摇杆链路延迟（同 rcplus_sim._dash_snapshot）。
+        # 必须选摇杆节点的 reader（readers 按路径排序，event4 在前）。
+        rd = next((r for r in readers if getattr(r, "device", "") == a.device), None)
         if rd is not None and getattr(rd, "latency_ms", None) is not None:
             snap["lat"] = int(round(rd.latency_ms))
             snap["eps"] = round(rd.eps, 1)

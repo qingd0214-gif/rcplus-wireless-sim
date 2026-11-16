@@ -201,8 +201,8 @@ es.onmessage = (e) => {
   } else {
     latEl.querySelector("b").textContent = d.lat;
     latEl.className = d.lat >= 100 ? "bad" : (d.lat >= 30 ? "warn" : "");
-    document.getElementById("eps").textContent = d.eps == null ? "--" : d.eps;
   }
+  document.getElementById("eps").textContent = d.eps == null ? "--" : d.eps;
   // 第三拨轮：wd = 最近 300ms 内往哪边转（+1/-1/0），ws = 速度档位 1~5。
   // 它是相对量、不回中，所以没有"位置"可画 —— 只能亮箭头表示正在转。
   const wdir = d.wd || 0;

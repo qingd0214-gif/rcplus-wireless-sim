@@ -914,8 +914,10 @@ def main():
                 # 第三拨轮（只在 DUML 里）：{"wd": 方向, "ws": 速度档}
                 **dashboard.wheel_snapshot()}
         # 实时摇杆链路延迟（内核时间戳 vs PC 到达，相对滑动窗口最优的漂移）
-        # + 事件流速率。readers 在下方才创建，闭包晚绑定没问题。
-        rd = readers[0] if readers else None
+        # + 事件流速率。必须选【摇杆节点】的 reader：readers 是按路径排序建的，
+        # event4（按键节点）排在 event6 前面，取 readers[0] 会拿到按键流 ——
+        # 不按键就永远没有数据（2026-11-16 踩过）。
+        rd = next((r for r in readers if getattr(r, "device", "") == a.device), None)
         if rd is not None and rd.latency_ms is not None:
             snap["lat"] = int(round(rd.latency_ms))
             snap["eps"] = round(rd.eps, 1)
