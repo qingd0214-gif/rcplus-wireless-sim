@@ -160,7 +160,7 @@ BTN_MAP = {
     "KEY_F1":      None,     # L1：不走手柄按键，改驱动 RT 轴（游戏的重置是轴输入）
     "KEY_F2":      "RB",
     "KEY_F3":      None,     # L3：菜单模式开关（不透传 GUIDE，否则会被游戏当系统键）
-    "KEY_F4":      None,     # R1：改走键盘注入 KEY_TAP——Uncrashed 2.0 按 M = 交互地图（传送/换点）
+    "KEY_F4":      None,     # R1：更改地图宏（暂停菜单纯鼠标 UI，见 _r1_changemap_macro）
     "KEY_F5":      None,     # 走键盘注入（见 KEY_TAP），不占手柄按键
     "KEY_F6":      None,     # R3：关闭游戏（脚本自用，不透传给游戏）
     # 五向键若走按键上报，会以这些名字出现：不走 BTN_MAP 透传，
@@ -177,12 +177,55 @@ BTN_MAP = {
 }
 
 # 遥控器按键 -> 键盘按键（按下即敲一下）。游戏手柄动作绑定不生效时的备用通道。
+# 值也可以是函数（按下时后台线程执行，见 _r1_changemap_macro）。
 KEY_TAP = {
     "KEY_F5": "R",           # F5 = 键盘 R，用来绑定游戏里的重置
-    "KEY_F4": "M",           # R1 = 键盘 M：Uncrashed 2.0 交互地图（按 M 开地图，可传送）
+    "KEY_F4": None,          # R1 = 更改地图宏，在下面定义后再填入
     # KEY_F6 (R3) 原来敲键盘 T，属于早期调试残留。改成"关闭游戏"后必须摘掉，
     # 否则按 R3 关游戏的同时还会往游戏里打进一个 T。
 }
+
+
+# ---- R1 = 更改地图宏 --------------------------------------------------------
+# Uncrashed 的暂停菜单是纯鼠标 UI（实测不认键盘方向键也不认手柄十字键），
+# 「更改地图」没有快捷键，只能模拟鼠标操作。实测出的可靠打法：
+#   Esc 开菜单 → 指针大负值扫到左上角锚点（无论原来在哪都必到 0,0）→
+#   关掉鼠标加速（保证 1 像素 = 1 像素）→ 相对移动到「更改地图」→ 单击。
+# 点击后弹出地图选择面板，选图交给五向键鼠标模式。
+# 坐标按 3440x1440 全屏实测；分辨率/界面比例不同时在 rcplus_config.json 里改：
+#   { "changemap_x": 246, "changemap_y": 338 }
+CHANGEMAP_XY = (246, 338)
+try:
+    CHANGEMAP_XY = (int(_cfg.get("changemap_x", CHANGEMAP_XY[0])),
+                    int(_cfg.get("changemap_y", CHANGEMAP_XY[1])))
+except Exception:
+    pass
+
+
+def _r1_changemap_macro():
+    import ctypes
+    import win_key
+    user32 = ctypes.windll.user32
+    saved = (ctypes.c_int * 3)()
+    user32.SystemParametersInfoW(0x0003, 3, saved, 0)      # SPI_GETMOUSE
+    flat = (ctypes.c_int * 3)(0, 0, 0)
+    try:
+        win_key.tap("ESC")                                 # 打开暂停菜单
+        time.sleep(0.5)
+        user32.SystemParametersInfoW(0x0004, 3, flat, 0)   # SPI_SETMOUSE：关加速
+        win_key.mouse_move(-30000, -30000)                 # 扫到左上角 (0,0)
+        time.sleep(0.15)
+        win_key.mouse_move(*CHANGEMAP_XY)                  # 走到「更改地图」
+        time.sleep(0.3)
+        win_key.mouse_click("left")
+        print("\n>>> [R1] 更改地图面板已打开（选图用五向键鼠标）   ", flush=True)
+    except Exception as e:
+        print(f"\n[!] R1 更改地图宏失败: {e}   ", flush=True)
+    finally:
+        user32.SystemParametersInfoW(0x0004, 3, saved, 0)  # 恢复鼠标加速设置
+
+
+KEY_TAP["KEY_F4"] = _r1_changemap_macro
 # 遥控器按键名 -> Xbox 按键常量（值为 None 的不透传）
 BTN_X = {k: XBTN[v] for k, v in BTN_MAP.items() if v}
 
@@ -1038,12 +1081,15 @@ def main():
             # 键盘注入备用通道：游戏手柄动作绑定失效时用这个
             k = KEY_TAP.get(name)
             if k:
-                try:
-                    import win_key
-                    win_key.tap(k)
-                    print(f"\n>>> 已发送键盘 {k}   ", flush=True)
-                except Exception as e:
-                    print(f"\n[!] 键盘注入失败: {e}")
+                if callable(k):          # 宏：后台线程执行（含 sleep，不能卡主循环）
+                    threading.Thread(target=k, daemon=True).start()
+                else:
+                    try:
+                        import win_key
+                        win_key.tap(k)
+                        print(f"\n>>> 已发送键盘 {k}   ", flush=True)
+                    except Exception as e:
+                        print(f"\n[!] 键盘注入失败: {e}")
         # 入口一：外壳 L3（KEY_F3）。有就短按直接轮换，省得长按。
         if name in MENU_TOGGLE_KEYS and down:
             cycle_menu()

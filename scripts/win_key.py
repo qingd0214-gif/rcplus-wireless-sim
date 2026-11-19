@@ -16,6 +16,7 @@ KEYEVENTF_KEYUP = 0x0002
 
 # 鼠标事件标志
 MOUSEEVENTF_MOVE = 0x0001        # 相对移动
+MOUSEEVENTF_ABSOLUTE = 0x8000    # 绝对定位（0~65535 归一坐标）
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 MOUSEEVENTF_RIGHTDOWN = 0x0008
@@ -77,6 +78,16 @@ def mouse_move(dx: int, dy: int):
     """相对移动鼠标光标（像素）。受系统"提高指针精确度"加速影响，
     实际位移可能与 dx/dy 不完全成比例——用法上无妨，推得越久走得越远。"""
     return _send((INPUT_MOUSE, (dx, dy, 0, MOUSEEVENTF_MOVE, 0, None)))
+
+
+def mouse_abs(x: int, y: int):
+    """绝对定位移动鼠标（主屏像素坐标）。菜单宏用：把光标放到指定按钮上。"""
+    w = user32.GetSystemMetrics(0)          # SM_CXSCREEN
+    h = user32.GetSystemMetrics(1)          # SM_CYSCREEN
+    nx = max(0, min(65535, int(x * 65536 / max(1, w))))
+    ny = max(0, min(65535, int(y * 65536 / max(1, h))))
+    return _send((INPUT_MOUSE, (nx, ny, 0,
+                                MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, 0, None)))
 
 
 def mouse_click(button: str = "left"):
