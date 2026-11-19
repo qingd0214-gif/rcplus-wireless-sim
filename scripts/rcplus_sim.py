@@ -96,7 +96,7 @@ STALL_KILL    = 8.0    # 这么久没收到任何事件 → 判定事件流已�
                        #   读线程永远阻塞在 readline 上，既不报错也不重连，表现就是
                        #   "摇杆卡住不动、按什么键都没反应"，直到游戏退出。必须靠看门狗。）
 
-GAME_EXE = r"D:\穿越机模拟器\Uncrashed免安装\Uncrashed.FPV\Uncrashed.exe"
+GAME_EXE = r"D:\穿越机UNE\不撞机  FPV无人机模拟器\Uncrashed FPV Drone Sim\Uncrashed\Binaries\Win64\Uncrashed-Win64-Shipping.exe"
 GAME_PROC = "Uncrashed-Win64-Shipping.exe"
 
 # 可选：rcplus_config.json 覆盖游戏路径（和 rcplus_bridge 里的 adb/event 节点共用一个文件）
@@ -506,7 +506,7 @@ class RadioKeepAlive(threading.Thread):
 
 
 # ---------------------------------------------------------------- 可见性自检
-SDL_DLL = r"D:\穿越机模拟器\Uncrashed免安装\Uncrashed.FPV\Uncrashed\Binaries\Win64\SDL2.dll"
+SDL_DLL = r"D:\穿越机UNE\不撞机  FPV无人机模拟器\Uncrashed FPV Drone Sim\Uncrashed\Binaries\Win64\SDL2.dll"
 
 
 def sdl_sees_pad(dll=SDL_DLL):
@@ -926,16 +926,20 @@ def main():
     # 遥控器点仪表页 → 自动启动模拟器（游戏已在跑就跳过，绝不重复开）
     def _dash_launch():
         if game_pids():
-            return True                       # 已在运行
+            return {"ok": True, "running": True}      # 已在运行
         try:
-            subprocess.Popen([a.game], cwd=str(Path(a.game).parent))
+            exe = Path(a.game)
+            if not exe.is_file():
+                # 游戏被删/换路径时，别静默失败——把原因带回去，仪表页会显示出来
+                return {"ok": False, "error": f"游戏 exe 不存在: {a.game}"}
+            subprocess.Popen([a.game], cwd=str(exe.parent))
             print("\n>>> [遥控器] 已启动模拟器   ", flush=True)
             if dashboard is not None and not a.no_wheel and serial:
                 dashboard.start_wheel(a.adb, serial)   # 游戏在跑才连 DUML
-            return False
+            return {"ok": True, "running": False}
         except Exception as e:
             print(f"\n[!] 遥控器启动模拟器失败: {e}   ", flush=True)
-            return False
+            return {"ok": False, "error": str(e)}
 
     dashboard = None
     try:

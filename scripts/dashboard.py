@@ -187,7 +187,8 @@ es.onerror = () => { document.getElementById("conn").textContent = "断开，重
 function launchSim() {
   const btn = document.getElementById("launchBtn");
   fetch("/launch", {method: "POST"}).then(r => r.json()).then(d => {
-    btn.textContent = d.running ? "● 模拟器运行中" : "▶ 已启动 ✓";
+    if (d.ok === false) { btn.textContent = "✗ 启动失败"; btn.title = d.error || ""; }
+    else btn.textContent = d.running ? "● 模拟器运行中" : "▶ 已启动 ✓";
   }).catch(() => { btn.textContent = "▶ 启动模拟器"; });
 }
 es.onmessage = (e) => {
@@ -452,10 +453,11 @@ def start_server(snapshot, port=PORT, commands=None):
             name = self.path.strip("/")
             if name in commands:
                 try:
-                    result = bool(commands[name]())
-                except Exception:
-                    result = False
-                body = json.dumps({"ok": True, "running": result}).encode()
+                    r = commands[name]()
+                    body = json.dumps(r if isinstance(r, dict)
+                                      else {"ok": True, "running": bool(r)}).encode()
+                except Exception as e:
+                    body = json.dumps({"ok": False, "error": str(e)}).encode()
                 self.send_response(200)
             else:
                 body = b'{"ok":false}'
