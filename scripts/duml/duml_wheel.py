@@ -42,7 +42,13 @@ def crc16(data):
 
 
 def keepalive(seq):
-    """DJI 要求 40ms 一次心跳，否则它把连接当作死客户端踢掉。"""
+    """维持 DUML 会话的心跳包。
+
+    2026-11-21 实测推翻旧结论"40ms 不发就被踢"：心跳放到 1 秒一次，
+    遥测照样满速 10 包/s（遥控器是主动推送的，心跳只是保活）。
+    25Hz 心跳会跟两条 getevent 流抢同一张 WiFi 网卡/同一个协议服务，
+    实测把摇杆事件率顶到 1 条/s（= 飞机抖、打杆不及时）。
+    现在待机 1Hz；静默 >2s 时自动提速 40ms 抢回会话，见 run()。"""
     total = 13
     b1, b2 = total & 0xFF, ((total >> 8) & 0x03) | (1 << 2)
     pkt = bytearray([0x55, b1, b2, crc8(bytes([0x55, b1, b2])), 2, 6,
@@ -123,19 +129,28 @@ class DumlWheel(threading.Thread):
                 continue
 
             buf = b""
+            last_hb = 0.0                      # 上次心跳时刻
+            last_rx = time.monotonic()         # 上次收到遥测时刻
+            fast_until = 0.0                   # 提速心跳的截止时刻
             try:
                 while not self.stop_evt.is_set():
-                    if seq % 4 == 0:                 # 25Hz 心跳
+                    now = time.monotonic()
+                    if now - last_rx > 2.0 and now >= fast_until:
+                        fast_until = now + 3.0   # 静默超 2s：提速 3s 抢回会话
+                    hb_gap = 0.04 if now < fast_until else 1.0
+                    if now - last_hb >= hb_gap:
                         try:
                             self._sock.sendall(keepalive(seq))
+                            seq += 1
+                            last_hb = now
                         except Exception:
                             break
-                    seq += 1
                     try:
                         chunk = self._sock.recv(4096)
                         if not chunk:
                             break
                         buf += chunk
+                        last_rx = time.monotonic()   # 收到数据 = 会话活着
                     except BlockingIOError:
                         chunk = None
                     except Exception:
