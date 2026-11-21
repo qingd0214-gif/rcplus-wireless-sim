@@ -343,6 +343,12 @@ powershell -Command "Get-CimInstance Win32_Process | ? { $_.CommandLine -match '
 ping -n 20 <遥控器IP>     # 平均 2ms=链路好；50ms+=省电没压住，重启 launcher.py --auto
 ```
 
+### 抖动 / 延迟 / 打杆不丝滑专项
+
+完整排查手册见 [`docs/TROUBLESHOOTING-JITTER.md`](docs/TROUBLESHOOTING-JITTER.md)
+——逐层复盘：观测手段 → WiFi 链路 → DUML 心跳 → GPU 帧率 → 游戏内设置 →
+**螺旋桨损坏系统（2.43 新增，重摔后抖动的真凶）** → 油门模式，含排查决策树与修复提交清单。
+
 ## 目录结构
 
 ```
